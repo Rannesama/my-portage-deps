@@ -1,0 +1,48 @@
+name: go-deps-tarball
+on:
+  workflow_dispatch:
+    inputs:
+      pkg:
+        description: 'The pkg name, must be same as ebuild'
+        required: true
+      repo:
+        description: 'The pkg source reponame. eg. vim/vim'
+        required: true
+      version:
+        description: 'The release tag of the pkg, must be same as ebuild'
+        required: true
+
+jobs:
+  go-deps:
+    runs-on: ubuntu-latest
+    env:
+      GOMODCACHE: ${{ github.workspace }}/go-mod
+      XZ_OPT: '-T0 -9'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          repository: '${{ inputs.repo }}'
+          ref: 'v${{ inputs.version }}'
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Download mods
+        run: go mod download -modcacherw
+
+      - name: Create tarball
+        run: tar -acf ${{ inputs.pkg }}-${{ inputs.version }}-deps.tar.xz go-mod
+
+      - name: Create release tag
+        run: |
+          TAG="${{ inputs.pkg }}-${{ inputs.version }}"
+          gh release view "$TAG" --repo Rannesama/my-portage-deps >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo Rannesama/my-portage-deps --title "$TAG" --notes ''
+
+      - name: Push release
+        run: gh release upload --repo Rannesama/my-portage-deps --clobber ${{ inputs.pkg }}-${{ inputs.version }} ${{ inputs.pkg }}-${{ inputs.version }}-deps.tar.xz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
