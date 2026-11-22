@@ -1,0 +1,52 @@
+name: npm-modules-tarball
+on:
+  workflow_dispatch:
+    inputs:
+      pkg:
+        description: 'The pkg name, must be same as ebuild'
+        required: true
+      repo:
+        description: 'The pkg source reponame. eg. vim/vim'
+        required: true
+      version:
+        description: 'The release tag of the pkg, must be same as ebuild'
+        required: true
+
+jobs:
+  npm-deps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      npm_config_cache: ${{ github.workspace }}/npm-cache
+      XZ_OPT: '-T0 -9'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          repository: '${{ inputs.repo }}'
+          ref: 'v${{ inputs.version }}'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: stable
+
+      - name: Download modules
+        run: npm install --workspaces --include=optional
+
+      - name: Create tarball
+        run: tar -acf ${{ inputs.pkg }}-${{ inputs.version }}-npm-cache.tar.xz npm-cache
+
+      - name: Create release tag
+        run: |
+          TAG="${{ inputs.pkg }}-${{ inputs.version }}"
+          gh release view "$TAG" --repo Rannesama/my-portage-deps >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo Rannesama/my-portage-deps --title "$TAG" --notes ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push release
+        run: gh release upload --repo Rannesama/my-portage-deps --clobber ${{ inputs.pkg }}-${{ inputs.version }} ${{ inputs.pkg }}-${{ inputs.version }}-npm-cache.tar.xz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
